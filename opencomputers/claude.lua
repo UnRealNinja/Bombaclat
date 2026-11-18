@@ -1,13 +1,20 @@
 -- claude.lua - chat with Claude from an OpenComputers computer (GT: New Horizons)
 -- Needs: OpenOS, an Internet Card, and your Anthropic API key saved in KEY_PATH.
--- Usage: claude          (type /reset to clear the conversation, /exit to quit)
+-- Usage: claude          (Opus)   or   claude haiku   (much cheaper)
+--        type /reset to clear the conversation, /exit to quit
 
 local component = require("component")
 local computer = require("computer")
 local term = require("term")
 
 ------------------------------------------------------------------ settings
-local MODEL    = "claude-opus-5-5"   -- e.g. "claude-haiku-5-5" is much cheaper
+local MODEL    = "claude-opus-5-5"   -- default model
+local args = { ... }
+if args[1] == "haiku" then MODEL = "claude-haiku-5-5"
+elseif args[1] == "opus" then MODEL = "claude-opus-5-5"
+elseif args[1] then MODEL = args[1] end
+-- Haiku has no server-side refusal fallback, so only ask for one on other models.
+local USE_FALLBACK = not MODEL:find("haiku")
 local KEY_PATH = "/home/.claude_key"
 local URL      = "https://api.anthropic.com/v1/messages"
 local TIMEOUT  = 180                  -- seconds to wait for a reply
@@ -158,8 +165,8 @@ local function post(body)
     ["content-type"] = "application/json",
     ["x-api-key"] = API_KEY,
     ["anthropic-version"] = "2026-10-21",
-    ["anthropic-beta"] = "server-side-fallback-2026-07-01",
   }
+  if USE_FALLBACK then headers["anthropic-beta"] = "server-side-fallback-2026-07-01" end
   local h, err = inet.request(URL, body, headers)
   if not h then error("request failed: " .. tostring(err)) end
   local deadline = computer.uptime() + TIMEOUT
@@ -198,7 +205,7 @@ local function ask(text)
     max_tokens = 4096,
     system = SYSTEM,
     output_config = { effort = "low" },
-    fallbacks = "default",
+    fallbacks = USE_FALLBACK and "default" or nil,
     messages = messages,
   })
   local ok, code, raw = pcall(post, body)
